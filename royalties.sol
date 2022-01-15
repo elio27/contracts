@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+
 // The contract starts at line 1887
  
 // File: @openzeppelin/contracts/utils/Context.sol
@@ -1880,11 +1881,12 @@ abstract contract Ownable is Context {
     }
 }
 
+// File: contracts\cacamint.sol
 
 
-// Here starts the contract !
+// ~~Here starts the real fun~~
 
-contract airdropTest {
+contract knivesRoyalties {
     using SafeMath for uint256;
 
     address public manager;
@@ -1915,9 +1917,9 @@ contract airdropTest {
         deposits.push(block.timestamp);
     }
 
-    function rewardsOf(address _user) public view returns(uint){
+    function rewardsOf(address _user) public view returns(uint256){
         ERC721 contrat = ERC721(_contract);
-        uint share = contrat.balanceOf(_user)/contrat.totalSupply();
+        uint256 share = contrat.balanceOf(_user).div(contrat.totalSupply());
         uint reward;
         for (uint i=0; i<deposits.length; i++) {
             if (lastClaimed[_user]<deposits[i]) {
@@ -1933,4 +1935,3 @@ contract airdropTest {
     }
 
 }
-

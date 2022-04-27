@@ -117,6 +117,9 @@ contract hedgeFork is ERC20{
 
         for (uint16 i=0; i<len2; i=usafeIncrement(i)) {
             Token memory token = _backTokens[i];
+            /*
+                sell tokens for xxx
+            */
             backTokens.push(token);
         }
     }

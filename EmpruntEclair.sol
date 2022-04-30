@@ -22,8 +22,67 @@ contract EmpruntEclair {
         }
     }
 
-    function flashloan(address _nftContract, address _executor, uint _type, uint[] calldata _ids, uint[] calldata _amounts, bytes calldata _params) external {
+    mapping(address => mapping(uint256 => address)) public erc721Owners;
+    mapping(address => mapping(uint256 => mapping(address => uint256))) public erc1155Owners;
 
+    /*
+        DEPOSER et RECUPERER des NFTs de type ERC721
+    */
+    function depositERC721(address _nftContract, uint256[] memory _ids) external {
+        
+        IERC721 _contract = IERC721(_nftContract);
+        uint256 len = _ids.length;
+        
+        for (uint256 i; i<len; i=unsafeIncrement(i)) {
+            uint256 id = _ids[i];
+            _contract.transferFrom(msg.sender, address(this), id);
+            erc721Owners[_nftContract][id] = msg.sender;
+        }
+    }
+
+    function withdrawERC721(address _nftContract, uint256[] memory _ids) external {
+        IERC721 _contract = IERC721(_nftContract);
+        uint256 len = _ids.length;
+        
+        for (uint256 i; i<len; i=unsafeIncrement(i)) {
+            uint256 id = _ids[i];
+            _contract.transferFrom(address(this), msg.sender, id);
+            erc721Owners[_nftContract][id] = address(0x0);
+        }
+    }
+
+
+    /*
+        DEPOSER et RECUPERER des NFTs de type ERC1155
+    */
+    function depositERC1155(address _nftContract, uint256[] memory _ids, uint[] memory _amounts) external {
+        
+        IERC1155 _contract = IERC1155(_nftContract);
+        _contract.safeBatchTransferFrom(msg.sender, address(this), _ids, _amounts, "0x0");
+
+        uint256 len = _ids.length;
+        
+        for (uint256 i; i<len; i=unsafeIncrement(i)) {
+            erc1155Owners[_nftContract][_ids[i]][msg.sender] = _amounts[i];
+        }
+    }
+
+    function withdrawERC1155(address _nftContract, uint256[] memory _ids, uint256[] memory _amounts) external {
+        IERC1155 _contract = IERC1155(_nftContract);
+        _contract.safeBatchTransferFrom(address(this), msg.sender, _ids, _amounts, "0x0");
+
+        uint256 len = _ids.length;
+        
+        for (uint256 i; i<len; i=unsafeIncrement(i)) {
+            erc1155Owners[_nftContract][_ids[i]][msg.sender] -= _amounts[i];
+        }
+    }
+
+
+
+    function flashloan(address _nftContract, address _executor, uint256 _type, uint[] calldata _ids, uint[] calldata _amounts, bytes calldata _params) external {
+
+        // Le fonctionnement est similaire mais le code est different en fonction du type de NFT voulu
         if (_type == 721) {
             _flashloan721(_nftContract, _executor, _ids, _params);
         }
@@ -33,8 +92,9 @@ contract EmpruntEclair {
     }
 
     function _flashloan721(address _nftContract, address _executor, uint[] calldata _ids, bytes calldata _params) internal {
-        uint256 len = uint256(_ids.length);
+        
         IERC721 _contract = IERC721(_nftContract);
+        uint256 len = _ids.length;
 
         // Envoie les NFTs voulus au contrat executeur
         for (uint256 i; i<len; i=unsafeIncrement(i)) {

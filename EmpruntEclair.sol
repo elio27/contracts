@@ -24,6 +24,7 @@ contract EmpruntEclair {
 
     mapping(address => mapping(uint256 => address)) public erc721Owners;
     mapping(address => mapping(uint256 => mapping(address => uint256))) public erc1155Owners;
+    uint256 public feePerToken;
 
     /*
         DEPOSER et RECUPERER des NFTs de type ERC721
@@ -79,19 +80,22 @@ contract EmpruntEclair {
     }
 
 
-
-    function flashloan(address _nftContract, address _executor, uint256 _type, uint[] calldata _ids, uint[] calldata _amounts, bytes calldata _params) external {
+    /*
+        FLASHLOAN 
+    */
+    function flashloan(address _nftContract, address _executor, uint256 _type, uint[] calldata _ids, uint[] calldata _amounts, bytes calldata _params) external payable {
 
         // Le fonctionnement est similaire mais le code est different en fonction du type de NFT voulu
         if (_type == 721) {
-            _flashloan721(_nftContract, _executor, _ids, _params);
+            uint256 cost = _flashloan721(_nftContract, _executor, _ids, _params);
         }
         else {
-            _flashloan1155(_nftContract, _executor,  _ids, _amounts, _params);
+            uint256 cost = _flashloan1155(_nftContract, _executor,  _ids, _amounts, _params);
         }
+
     }
 
-    function _flashloan721(address _nftContract, address _executor, uint[] calldata _ids, bytes calldata _params) internal {
+    function _flashloan721(address _nftContract, address _executor, uint[] calldata _ids, bytes calldata _params) internal returns(uint256){
         
         IERC721 _contract = IERC721(_nftContract);
         uint256 len = _ids.length;
@@ -107,13 +111,15 @@ contract EmpruntEclair {
         // Verifie que les NFTs sont bien revenus au contrat et les reprend si ce n'est pas le cas
         for (uint256 i; i<len; i=unsafeIncrement(i)) {
             if (_contract.ownerOf(_ids[i]) != address(this)) {
-                _contract.safeTransferFrom(_executor, address(this), _ids[i]);
+                _contract.transferFrom(_executor, address(this), _ids[i]);
             }
         }
 
+        return len*feePerToken;
+
     }
 
-    function _flashloan1155(address _nftContract, address _executor, uint[] calldata _ids, uint[] calldata _amounts, bytes calldata _params) internal {
+    function _flashloan1155(address _nftContract, address _executor, uint[] calldata _ids, uint[] calldata _amounts, bytes calldata _params) internal returns(uint256){
 
         IERC1155 _contract = IERC1155(_nftContract);
 
@@ -125,6 +131,16 @@ contract EmpruntEclair {
 
         // Recupere les NFTs empruntés
         _contract.safeBatchTransferFrom(_executor, address(this), _ids, _amounts, "0x0");
+
+        // Calcule le montant des frais d'emprunt
+        uint256 len = _amounts.length;
+        uint256 sum;
+        for (uint256 i; i<len; i=unsafeIncrement(i)) {
+            unchecked{
+                sum += _amounts[i];
+            }
+        }
+        return sum*feePerToken;
     }
 
 }

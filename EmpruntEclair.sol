@@ -22,9 +22,25 @@ contract EmpruntEclair {
         }
     }
 
+    struct Collection {
+        uint256 stakedAmount;
+        uint256 collectedFees;
+    }
+
+    address public owner; // Adresse du proprietaire du contrat
     mapping(address => mapping(uint256 => address)) public erc721Owners;
     mapping(address => mapping(uint256 => mapping(address => uint256))) public erc1155Owners;
-    uint256 public feePerToken;
+    mapping(address => Collection) public collections;
+    uint128 public feePerToken; // Prix en eth de l'emprunt d'un NFT
+    uint128 public devShare; // Part, sur 1000, de frais pris par l'equipe du projet
+
+    constructor(uint128 _feePerToken, uint128 _devShare) {
+        // Definit les variables de contrat
+        owner = msg.sender;
+        feePerToken = _feePerToken;
+        devShare = _devShare;
+    }
+
 
     /*
         DEPOSER et RECUPERER des NFTs de type ERC721
@@ -36,9 +52,12 @@ contract EmpruntEclair {
         
         for (uint256 i; i<len; i=unsafeIncrement(i)) {
             uint256 id = _ids[i];
+            require(_contract.ownerOf(id)!=address(this), "Token already staked.");
             _contract.transferFrom(msg.sender, address(this), id);
             erc721Owners[_nftContract][id] = msg.sender;
         }
+
+        collections[_nftContract].stakedAmount += len;
     }
 
     function withdrawERC721(address _nftContract, uint256[] memory _ids) external {
@@ -47,9 +66,11 @@ contract EmpruntEclair {
         
         for (uint256 i; i<len; i=unsafeIncrement(i)) {
             uint256 id = _ids[i];
+            require(erc721Owners[_nftContract][id] == msg.sender, "You don't own this token.");
             _contract.transferFrom(address(this), msg.sender, id);
             erc721Owners[_nftContract][id] = address(0x0);
         }
+        collections[_nftContract].stakedAmount -= len;
     }
 
 
@@ -64,7 +85,8 @@ contract EmpruntEclair {
         uint256 len = _ids.length;
         
         for (uint256 i; i<len; i=unsafeIncrement(i)) {
-            erc1155Owners[_nftContract][_ids[i]][msg.sender] = _amounts[i];
+            erc1155Owners[_nftContract][_ids[i]][msg.sender] += _amounts[i];
+            collections[_nftContract].stakedAmount += _amounts[i];
         }
     }
 
@@ -76,6 +98,7 @@ contract EmpruntEclair {
         
         for (uint256 i; i<len; i=unsafeIncrement(i)) {
             erc1155Owners[_nftContract][_ids[i]][msg.sender] -= _amounts[i];
+            collections[_nftContract].stakedAmount -= _amounts[i];
         }
     }
 
@@ -85,13 +108,27 @@ contract EmpruntEclair {
     */
     function flashloan(address _nftContract, address _executor, uint256 _type, uint[] calldata _ids, uint[] calldata _amounts, bytes calldata _params) external payable {
 
+        // Retient la quantité d'eth dans le contract avant l'execution du flashloan
+        uint256 iniBalance = address(this).balance;
+        uint256 cost;
+
         // Le fonctionnement est similaire mais le code est different en fonction du type de NFT voulu
         if (_type == 721) {
-            uint256 cost = _flashloan721(_nftContract, _executor, _ids, _params);
+            cost = _flashloan721(_nftContract, _executor, _ids, _params) - 1; // le -1 sert a economiser du gas
+        }
+        else if (_type == 1155) {
+            cost = _flashloan1155(_nftContract, _executor,  _ids, _amounts, _params) - 1;
         }
         else {
-            uint256 cost = _flashloan1155(_nftContract, _executor,  _ids, _amounts, _params);
+            revert("Type de token non supporte.");
         }
+
+        require(msg.value > cost || address(this).balance - iniBalance > cost, "Remboursement incorrect");
+
+        
+        uint256 remaining = cost * (100-devShare) / 1000;
+        collections[_nftContract].collectedFees = remaining;
+        payable(owner).transfer()
 
     }
 
@@ -141,6 +178,40 @@ contract EmpruntEclair {
             }
         }
         return sum*feePerToken;
+    }
+
+
+
+    /*
+        Fonctions casse-couilles d'Openzeppelin
+    */
+    function onERC721Received(
+        address,
+        address,
+        uint256,
+        bytes memory
+    ) public pure returns (bytes4) {
+        return this.onERC721Received.selector;
+    }
+
+    function onERC1155Received(
+        address,
+        address,
+        uint256,
+        uint256,
+        bytes memory
+    ) public pure returns (bytes4) {
+        return this.onERC1155Received.selector;
+    }
+
+    function onERC1155BatchReceived(
+        address,
+        address,
+        uint256[] memory,
+        uint256[] memory,
+        bytes memory
+    )   public pure returns (bytes4) {
+        return this.onERC1155BatchReceived.selector;
     }
 
 }

@@ -45,8 +45,8 @@ contract hedgeFork is ERC20{
     Token[] public backTokens;
     uint16  public devShare;
     address public owner;
-    address public spookyRouter = 0xF491e7B69E4244ad4002BC14e878a34207E38c29;
-    address public wETH = 0x21be370D5312f44cB42ce377BC9b8a0cEF1A4C83;
+    address public spookyRouter = 0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45;
+    address public wETH = 0xc778417E063141139Fce010982780140Aa0cD5Ab;
     mapping(address => bool) public whitelisted;
 
     constructor(uint256 initialSupply) ERC20("Fund token", "FUND") {
@@ -55,13 +55,15 @@ contract hedgeFork is ERC20{
     }
 
     function buy(address _token, uint256 amount) external {
+
         uint256 len = backTokens.length;
         uint256 balance = IERC20(_token).balanceOf(msg.sender);
+        address[] memory _path = new address[](3); 
+        _path[0] = _token;
+        _path[1] = wETH;
+
         for (uint16 i=0; i<len; i=usafeIncrement(i)) {
             Token memory token = backTokens[i];
-            address[] memory _path = new address[](3);
-            _path[0] = _token;
-            _path[1] = wETH;
             _path[2] = token.tokenAdress;
 
             IRouter(spookyRouter).swapTokensForExactTokens(
@@ -78,16 +80,16 @@ contract hedgeFork is ERC20{
     
 
     function redeem(address _toToken, uint256 amount) external {
+        
         uint256 len = backTokens.length;
         uint256 iniBalance = IERC20(_toToken).balanceOf(address(this));
+        address[] memory _path = new address[](3); 
+        _path[1] = wETH;
+        _path[2] = _toToken;
 
         for (uint16 i=0; i<len; i=usafeIncrement(i)) {
             Token memory token = backTokens[i];
-            address[] memory _path = new address[](3);
             _path[0] = token.tokenAdress;
-            _path[1] = wETH;
-            _path[2] = _toToken;
-
             IRouter(spookyRouter).swapExactTokensForTokens(
                 token.amountPerToken * amount / 10**18,
                 0,
@@ -106,20 +108,39 @@ contract hedgeFork is ERC20{
     function setBackingDistribution(Token[] calldata _backTokens) external {
         uint256 len1 = backTokens.length;
         uint256 len2 = _backTokens.length;
+        uint256 total = totalSupply();
         backTokens;
+        address[] memory _path = new address[](2); 
+        _path[1] = wETH;
         
-
+        // sell tokens for wETH
         for (uint16 i=0; i<len1; i=usafeIncrement(i)) {
-            /*
-                sell tokens for xxx
-            */
+
+            Token memory token = backTokens[i];
+            _path[0] = token.tokenAdress;
+
+            IRouter(spookyRouter).swapExactTokensForTokens(
+                token.amountPerToken * total / 10**18,
+                0,
+                _path,
+                address(this),
+                block.timestamp + 1
+            );    
         }
 
+        // sell wETH for tokens
+        _path[0] = wETH;
         for (uint16 i=0; i<len2; i=usafeIncrement(i)) {
             Token memory token = _backTokens[i];
-            /*
-                sell tokens for xxx
-            */
+            _path[1] = token.tokenAdress;
+            IRouter(spookyRouter).swapTokensForExactTokens(
+                token.amountPerToken * total / 10**18,
+                IERC20(wETH).balanceOf(address(this)),
+                _path,
+                msg.sender,
+                block.timestamp + 1
+            );
+
             backTokens.push(token);
         }
     }
